@@ -859,8 +859,8 @@ export function LocalFilePreview({
           // Empty (clean file / not a repo / remote) just hides the option.
           if (!shouldBlock) {
             try {
-              const root = await desktopGitRoot(filePath)
-              const diff = root ? await desktopFileDiff(root, filePath) : ''
+              const root = await desktopGitRoot(filePath, { sessionId })
+              const diff = root ? await desktopFileDiff(root, filePath, { sessionId }) : ''
 
               if (active && diff.trim()) {
                 setState(prev => (prev.text === result.text ? { ...prev, diff } : prev))

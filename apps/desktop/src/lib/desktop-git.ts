@@ -8,8 +8,9 @@ import type {
   HermesReviewShipInfo
 } from '@/global'
 import { hermesApi } from '@/hermes'
+import { $focusedStoredSessionId } from '@/store/session-focus'
 
-import { desktopFsProfile, isDesktopFsRemoteMode } from './desktop-fs'
+import { desktopFsOwner, isDesktopFsRemoteMode } from './desktop-fs'
 
 // Remote-aware git facade. Locally the desktop runs git through Electron
 // (window.hermesDesktop.git); on a remote gateway that's the wrong filesystem,
@@ -26,9 +27,11 @@ function desktopApi<T>(path: string, body?: Record<string, unknown>): Promise<T>
     throw new Error('Hermes Desktop bridge is unavailable')
   }
 
-  return hermesApi<T>(
-    body ? { body, method: 'POST', path, profile: desktopFsProfile() } : { path, profile: desktopFsProfile() }
-  )
+  // FORK-ONLY: git acts on the focused chat's workspace, so it goes as that chat's owner
+  // (a Bot's profile), not the window's.
+  const owner = desktopFsOwner({ sessionId: $focusedStoredSessionId.get() })
+
+  return hermesApi<T>(body ? { ...owner, body, method: 'POST', path } : { ...owner, path })
 }
 
 function gitGet<T>(route: string, params: Record<string, boolean | null | string | undefined>): Promise<T> {

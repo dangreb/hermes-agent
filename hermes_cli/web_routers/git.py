@@ -16,6 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from hermes_cli import web_git as _web_git
+from hermes_cli import web_git_ssh as _web_git_ssh  # FORK-ONLY
 from hermes_cli._subprocess_compat import bounded_probe_run
 from hermes_cli.web_deps import late
 from hermes_cli.web_server_files import _fs_path, _hosted_fs_path_allowed, _hosted_fs_read_guard
@@ -29,16 +30,17 @@ from hermes_cli.web_models import (
     GitWorktreeRemoveBody,
 )
 
-router = APIRouter()
+router = APIRouter(route_class=_web_git_ssh.SshWorkspaceRoute)  # FORK-ONLY: route_class
+_hosted_fs_read_guard = _web_git_ssh.local_only(_hosted_fs_read_guard)  # FORK-ONLY
 
 # Late-bound so a test's monkeypatch on the owning module wins at call time.
 
 
 async def _git_op(fn, *args):
     """Run a (blocking) git op off the event loop; map a failed mutation to 400."""
-    loop = asyncio.get_running_loop()
     try:
-        return await loop.run_in_executor(None, fn, *args)
+        # FORK-ONLY: to_thread (not run_in_executor) carries the bound SSH workspace along.
+        return await asyncio.to_thread(fn, *args)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc) or "git operation failed")
 

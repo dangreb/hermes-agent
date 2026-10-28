@@ -90,6 +90,11 @@ function fsRoute(scope?: DesktopFsSessionScope): FsRoute {
   return owner ? { owner, sessionId } : { owner: { profile: desktopFsProfile() } }
 }
 
+// FORK-ONLY: the backend git routes run as this owner's SSH workspace (hermes_cli/web_git_ssh.py).
+export function desktopFsOwner(scope?: DesktopFsSessionScope): FsRoute['owner'] {
+  return fsRoute(scope).owner
+}
+
 function fsPath(endpoint: string, filePath: string, sessionId?: string) {
   const session = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''
 
@@ -313,10 +318,16 @@ export async function copyTextToClipboard(text: string): Promise<void> {
 
 // Working-tree-vs-HEAD diff for one file. Empty when unchanged / not a repo.
 // Remote gateway → backend git (/api/git/file-diff); local → Electron git.
-export async function desktopFileDiff(repoRoot: string, filePath: string): Promise<string> {
+export async function desktopFileDiff(
+  repoRoot: string,
+  filePath: string,
+  scope?: DesktopFsSessionScope
+): Promise<string> {
   if (isDesktopFsRemoteMode()) {
     const result = await remoteFsApi<{ diff: string }>(
-      `/api/git/file-diff?path=${encodeURIComponent(repoRoot)}&file=${encodeURIComponent(filePath)}`
+      `/api/git/file-diff?path=${encodeURIComponent(repoRoot)}&file=${encodeURIComponent(filePath)}`,
+      undefined,
+      fsRoute(scope).owner
     )
 
     return result.diff || ''
