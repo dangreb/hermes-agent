@@ -146,11 +146,18 @@ def _extract_timeout_seconds() -> float:
         return _DEFAULT_EXTRACT_TIMEOUT_S
 
 
+def _backend_failed_whole_batch(results: list[dict]) -> bool:
+    from plugins.web._common import is_origin_http_error
+    errors = [r.get("error") for r in results]
+    return bool(errors) and all(errors) and not any(is_origin_http_error(e) for e in errors)
+
+
 async def _dispatch_extract(provider, fetch_urls: list[str], format: Optional[str]) -> list[dict]:
     """Call ``provider.extract`` (async or sync-in-thread), with one-shot keyless rescue.
 
     Rescue fires on a raised exception — including a dispatch timeout — or when the WHOLE batch
-    failed (backend outage, not per-page problems). Rescued batches are never cached.
+    failed (backend outage, not per-page problems): an origin HTTP 4xx/5xx is the page's own answer,
+    so a batch with one never triggers it. Rescued batches are never cached.
     """
     import inspect
     from tools.web_result_cache import extract_cache_put
@@ -177,7 +184,7 @@ async def _dispatch_extract(provider, fetch_urls: list[str], format: Optional[st
             raise
         failed = [_result_entry(u, str(exc)) for u in fetch_urls]
         return await asyncio.to_thread(_rescue_extract, provider.name, fetch_urls, failed)
-    if results and all(r.get("error") for r in results) and _rescue_eligible(provider):
+    if _backend_failed_whole_batch(results) and _rescue_eligible(provider):
         return await asyncio.to_thread(_rescue_extract, provider.name, fetch_urls, results)
 
     # Cache each successful fetch under the REQUESTED url it reports as its own — never by list

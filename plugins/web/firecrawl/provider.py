@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from plugins.web._common import BaseWebSearchProvider, keyless_extract, keyless_search, search_fail, search_ok, setup_schema
+from plugins.web._common import BaseWebSearchProvider, keyless_extract, keyless_search, search_fail, search_ok, setup_schema, with_origin_status
 from tools import managed_tool_gateway as _gateway
 from tools import tool_backend_helpers as _backend_helpers
 from tools.url_safety import is_safe_url
@@ -263,6 +263,14 @@ def _extract_scrape_payload(scrape_result: Any) -> dict[str, Any]:
     return plain["data"] if isinstance(plain.get("data"), dict) else plain
 
 
+def _with_scrape_status(entry: dict[str, Any], metadata: Any) -> dict[str, Any]:
+    """Flag a scrape whose target answered >= 400. The REST API reports ``statusCode``; the v4 SDK's
+    ``model_dump`` (direct key and Tool Gateway) reports ``status_code``."""
+    if not isinstance(metadata, dict):
+        return entry
+    return with_origin_status(entry, metadata.get("statusCode", metadata.get("status_code")), metadata.get("error"))
+
+
 def _error_entry(url: str, error: str, *, title: str = "", raw: bool = False, blocked: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Per-URL extract failure. ``raw`` adds ``raw_content`` (post-scrape failures carry
     it, pre-scrape ones don't); ``blocked`` adds ``blocked_by_policy``."""
@@ -313,7 +321,8 @@ async def _scrape_one(url: str, formats: list[str], format: Optional[str]) -> di
             return _error_entry(final_url, final_blocked["message"], title=title, raw=True, blocked=final_blocked)
         markdown, html = payload.get("markdown"), payload.get("html")
         content = markdown if format == "markdown" or (format is None and markdown) else html or markdown or ""
-        return {"url": final_url, "title": title, "content": content, "raw_content": content, "metadata": metadata}
+        entry = {"url": final_url, "title": title, "content": content, "raw_content": content, "metadata": metadata}
+        return _with_scrape_status(entry, metadata)
     except Exception as scrape_err:
         logger.debug("Firecrawl scrape failed for %s: %s", url, scrape_err)
         return _error_entry(url, str(scrape_err), raw=True)
